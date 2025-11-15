@@ -3,10 +3,9 @@ from fastapi.responses import HTMLResponse
 import uvicorn
 from utitls import generate_random_id
 import json
+from manage_queue import queue
 
 app = FastAPI()
-
-users = {}
 
 html = """
 <!DOCTYPE html>
@@ -67,16 +66,24 @@ html = """
 </html>
 """
 
+users = {}
+users_ids = set()
+ai_queue = queue()
+
+
+@app.on_event("startup")
+async def startup_event():
+    print("Server started and ready to accept connections.")
+    
+
 @app.get("/")
 async def get():
     return HTMLResponse(html)
-
 
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
     await websocket.accept()
 
-    # first message must contain user JSON
     first_msg = await websocket.receive_text()
     user_data = json.loads(first_msg)
     username = user_data.get("name", "anonymous")
@@ -86,10 +93,17 @@ async def websocket_endpoint(websocket: WebSocket):
 
     await websocket.send_text(f"User {username} connected with ID {user_id}")
 
-    # now normal chat messages
     while True:
         msg = await websocket.receive_text()
+        recognize(msg)
         await broadcast(f"{username}: {msg}")
+
+def recognize(msg: str):
+    if(msg.startswith("@hey_gem")):
+        print("Recognized command for hey_gem")
+        ai_queue.enqueue(msg)
+    # Todo: Add more command recognitions here (e.g., @hey_code, @hey_image, etc.)
+
 
 async def broadcast(message: str):
     for user_ws in users.values():
